@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Author => Abhilash26
+# Usage mangacli <search_term>
+
+
+DOMAIN='https://readm.org'
+
+mkdir -p '/tmp/manga/'
+
+curl -s "$DOMAIN/service/search" \
+  -H 'x-requested-with: XMLHttpRequest' \
+  --data-raw "dataType=json&phrase=$@" > /tmp/manga/search.json
+
+# NO SEARCH RESULTS -----------------------------------------
+
+if [[ "$(jq '.success' /tmp/manga/search.json)" != "1" ]]; then printf "Searching for $@ failed. No results."; exit; fi
+
+# CLEAN SEARCH RESULTS ---------------------------------------
+
+jq '.manga[] | "\(.title)"' /tmp/manga/search.json | sed 's/"//g;s/\\//g;s/~/"/g' > /tmp/manga/results.list
+
+# SHOW ALL RESULTS --------------------------------------------
+
+iterator=1; while read result; 	do printf "[$iterator] $result\n"; ((iterator=iterator+1)); done < /tmp/manga/results.list
+
+# SELECT RESULT -----------------------------------------------
+
+read -p "Select what you want to read! : " option; 
+printf "\nYou have selected $option option\n"
+
+((mangaoptionindex=option-1))
+
+MANGAID=$(jq ".manga[$mangaoptionindex].url" /tmp/manga/search.json | sed 's/\/manga\///g; s/"//g')
+
+printf "\nweburl is : $DOMAIN/manga/$MANGAID\n"
+
+# GET FIRST CHAPTER NAME --------------------------------------
+
+FIRSTCHAPTER=$(curl -s "$DOMAIN/manga/$MANGAID" | pup '.media-meta table.ui td:last-child .truncate a attr{href}' | cut -d/ -f4)
+
+# GET CHAPTER LIST --------------------------------------------
+
+curl -s "$DOMAIN/manga/$MANGAID/$FIRSTCHAPTER/all-pages" > /tmp/manga/chapterdata
+cat /tmp/manga/chapterdata | pup 'img.scroll-down attr{src}' > /tmp/manga/url.list
+cat /tmp/manga/chapterdata | pup '#content .ui .menu.left' > /tmp/manga/list
+grep 'Chapter ' /tmp/manga/list | sed 's/Chapter //' | tac > /tmp/manga/chapter.list
+grep 'Page ' /tmp/manga/list > /tmp/manga/page.list				
+
+# SHOW CHAPTER LIST -------------------------------------------
+
+while read chapter; do	printf "[$chapter]\n"; done < /tmp/manga/chapter.list
+
+# SELECT CHAPTER LIST --------------------------------------------
+
+read -p "Download which chapter: " CHAPTERID
+
+if [[ "$CHAPTERID" == "$FIRSTCHAPTER" ]]; then 	
+	rm /tmp/manga/chapter/*
+	mkdir -p "/tmp/manga/chapter"
+	cd /tmp/manga/chapter
+	u=0
+	urls="$(cat /tmp/manga/url.list | wc -l)"
+	printf "Total $urls images\nDownloading\t";
+	while read url
+	do 
+		curl -sO "$DOMAIN/$url" &&  ((u=u+1)) && printf "=";
+	done < /tmp/manga/url.list
+	printf "\n\n"
+	sxiv -t $(\ls -tr *.*)
+fi
+
+while true; 
+do 
+	printf "\n[1] Download next chapter?\n[2] Exit\n"
+	read OPTION
+	if [[ "$OPTION" ==  "2" ]]; then
+		exit
+	elif [[ "$OPTION" == "1" ]]; then
+		CHAPTERID=$(cat /tmp/manga/chapter.list | awk "/$CHAPTERID/{getline;print;}" | sed 's/ //g')
+		echo $CHAPTERID
+		curl -s "$DOMAIN/manga/$MANGAID/$CHAPTERID/all-pages" | pup 'img.scroll-down attr{src}' > /tmp/manga/url.list
+		rm /tmp/manga/chapter/*
+		mkdir -p "/tmp/manga/chapter"
+		cd /tmp/manga/chapter
+		while read url 
+		do 
+			curl -sO "$DOMAIN/$url" && printf "\n$url downloaded." 
+		done < /tmp/manga/url.list
+		sxiv -t $(\ls -tr *.*)
+	fi
+done
