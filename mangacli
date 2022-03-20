@@ -55,20 +55,18 @@ while read chapter; do	printf "[$chapter]\n"; done < /tmp/manga/chapter.list
 
 read -p "Download which chapter: " CHAPTERID
 
-if [[ "$CHAPTERID" == "$FIRSTCHAPTER" ]]; then 	
-	rm /tmp/manga/chapter/*
-	mkdir -p "/tmp/manga/chapter"
-	cd /tmp/manga/chapter
-	u=0
-	urls="$(cat /tmp/manga/url.list | wc -l)"
-	printf "Total $urls images\nDownloading\t";
-	while read url
-	do 
-		curl -sO "$DOMAIN/$url" &&  ((u=u+1)) && printf "=";
-	done < /tmp/manga/url.list
-	printf "\n\n"
-	sxiv -t $(\ls -tr *.*)
-fi
+rm /tmp/manga/chapter/*
+mkdir -p "/tmp/manga/chapter"
+cd /tmp/manga/chapter
+urls="$(cat /tmp/manga/url.list | wc -l)"
+printf "Total $urls images\nDownloading\t";
+while read url
+do 
+	curl -sO "$DOMAIN/$url" && printf "=";
+done < /tmp/manga/url.list
+cat /tmp/manga/url.list
+printf "\n\n"
+sxiv -t $(\ls -tr *.*)
 
 while true; 
 do 
